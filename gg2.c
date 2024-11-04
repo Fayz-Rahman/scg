@@ -25,7 +25,7 @@ SDL_Renderer* renderer;
 int SCREEN_WIDTH = INITIAL_SCREEN_WIDTH;
 int SCREEN_HEIGHT = INITIAL_SCREEN_HEIGHT;
 
-//funtion for spawning enemy
+
 void spawnEnemy(Entity* enemy) {
     enemy->x = rand() % (SCREEN_WIDTH - ENEMY_SIZE);
     enemy->y = rand() % (SCREEN_HEIGHT - ENEMY_SIZE);
@@ -112,11 +112,7 @@ int main(int argc, char* argv[]) {
     Uint32 lastTime = SDL_GetTicks();
     Entity player = { SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, PLAYER_SIZE, true };
     Entity enemies[ENEMY_COUNT];
-    
-    for (int i = 0; i < ENEMY_COUNT; i++) {
-        spawnEnemy(&enemies[i]);
-    }
-
+    enemies->alive=false;
     float angle = 0.0f;
 
     while (running) {
@@ -190,6 +186,12 @@ int main(int argc, char* argv[]) {
             if (enemies[i].alive && checkCollision(redDotX, redDotY, RED_DOT_RADIUS * 2, 
                 enemies[i].x + enemies[i].size / 2, enemies[i].y + enemies[i].size / 2, enemies[i].size)) {
                 enemies[i].alive = false;  // Enemy is destroyed when hit
+            }
+        }
+        
+        if (enemies[0].alive==false && enemies[1].alive==false && enemies[2].alive==false && enemies[3].alive==false && enemies[4].alive==false && enemies[5].alive==false && enemies[6].alive==false && enemies[7].alive==false && enemies[8].alive==false && enemies[9].alive==false){
+            for (int i = 0; i < ENEMY_COUNT; i++) {
+                spawnEnemy(&enemies[i]);
             }
         }
 
