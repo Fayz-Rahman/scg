@@ -14,7 +14,7 @@
 #define CIRCLE_RADIUS 50
 #define RED_DOT_RADIUS 5
 #define ENEMY_COUNT 10
-#define SPEED 200
+#define SPEED 150
 #define INITIAL_ENEMY_SPEED 80.00
 #define PI 3.14159265358979323846
 #define MAX_BULLETS 9
@@ -39,6 +39,7 @@ SDL_Texture* backgroundTexture;
 SDL_Texture* menuBackgroundTexture;
 SDL_Texture* playerTexture;
 SDL_Texture* enemyTexture;
+SDL_Texture* redDotTexture;
 TTF_Font* font;
 TTF_Font* gameOverFont;
 
@@ -46,12 +47,14 @@ TTF_Font* gameOverFont;
 int SCREEN_WIDTH = INITIAL_SCREEN_WIDTH;
 int SCREEN_HEIGHT = INITIAL_SCREEN_HEIGHT;
 int score = 0;
-int playerHP = 10;
+int playerHP = PLAYER_MAX_HP;
 int ENEMY_SPEED = INITIAL_ENEMY_SPEED;
-bool running = true;
+bool running = false;
+bool menuRunning= true;
 bool isFullScreen = false;
 bool gameOver = false;
 Bullet bullets[MAX_BULLETS];
+bool quit = false;
 
 int loadHighScore();
 
@@ -62,14 +65,16 @@ void spawnEnemy(Entity* enemy) {
     enemy->alive = true;
 }
 
-bool checkCollision(float x1, float y1, int size1, float x2, float y2, int size2) {
+bool checkCollision(float x1, float y1, int size1, 
+float x2, float y2, int size2) {
     float dx = x1 - x2;
     float dy = y1 - y2;
     float distance = sqrt(dx * dx + dy * dy);
     return distance < (size1 / 2 + size2 / 2);
 }
 
-void scalePositionsAndSizes(float scaleX, float scaleY, Entity* player, Entity enemies[], int enemyCount) {
+void scalePositionsAndSizes(float scaleX, float scaleY, 
+Entity* player, Entity enemies[], int enemyCount) {
     // playerPos
     player->x *= scaleX;
     player->y *= scaleY;
@@ -157,7 +162,7 @@ int calculateNumBullets() {
 void init() {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
-    window = SDL_CreateWindow("GameProj-02",
+    window = SDL_CreateWindow("Chase of The Lost",
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_RESIZABLE);
     
     if (!window) {
@@ -175,6 +180,7 @@ void init() {
     backgroundTexture = IMG_LoadTexture(renderer, "./assets/images/bg.png");
     playerTexture = IMG_LoadTexture(renderer, "./assets/images/player.png");
     enemyTexture = IMG_LoadTexture(renderer, "./assets/images/enemy.png");
+    redDotTexture = IMG_LoadTexture(renderer, "./assets/images/fireball.png");
     font = TTF_OpenFont("./assets/fonts/VCR_OSD_MONO.ttf",24);
     gameOverFont = TTF_OpenFont("./assets/fonts/VCR_OSD_MONO.ttf",100);
     
@@ -224,8 +230,10 @@ void render(Entity* player, Entity enemies[], float redDotX, float redDotY) {
 
     // Render player
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
-    SDL_Rect playerRect = { (int)player->x, (int)player->y, PLAYER_SIZE, PLAYER_SIZE };
-    SDL_RenderCopy(renderer, playerTexture, NULL, &playerRect);
+    SDL_Rect playerRect = { (int)player->x, 
+    (int)player->y, PLAYER_SIZE, PLAYER_SIZE };
+    SDL_RenderCopy(renderer, playerTexture, 
+    NULL, &playerRect);
 
     // Render enemies
     for (int i = 0; i < ENEMY_COUNT; i++) {
@@ -240,7 +248,7 @@ void render(Entity* player, Entity enemies[], float redDotX, float redDotY) {
     // Render revolving red dot
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
     SDL_Rect redDotRect = { (int)redDotX - RED_DOT_RADIUS, (int)redDotY - RED_DOT_RADIUS, RED_DOT_RADIUS * 2, RED_DOT_RADIUS * 2 };
-    SDL_RenderFillRect(renderer, &redDotRect);
+    SDL_RenderCopy(renderer, redDotTexture, NULL, &redDotRect);
 
     char scoretxt[30];
     sprintf(scoretxt, "Score: %d", score);
@@ -304,20 +312,55 @@ int loadHighScore() {
     FILE* file = fopen("highscore.dat", "rb");
     int highScore = 0;
     if (file) {
-        fread(&highScore, sizeof(int), 1, file);  // Read the score from the file
+        fread(&highScore, sizeof(int), 1, file);
         fclose(file);
     }
     return highScore;
 }
 
-void renderButton( SDL_Rect button, const char* label) {
-    SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
-    SDL_RenderFillRect(renderer, &button);
+void renderRoundedRect(SDL_Renderer* renderer, SDL_Rect rect, int radius) {
+    // top-left corner arc
+    for (int y = 0; y < radius; y++) {
+        for (int x = 0; x < radius; x++) {
+            if (x * x + y * y <= radius * radius) {
+                SDL_RenderDrawPoint(renderer, rect.x + x, rect.y + y); // Top-left
+                SDL_RenderDrawPoint(renderer, rect.x + rect.w - x - 1, rect.y + y); // Top-right 
+                SDL_RenderDrawPoint(renderer, rect.x + x, rect.y + rect.h - y - 1); // Bottom-left 
+                SDL_RenderDrawPoint(renderer, rect.x + rect.w - x - 1, rect.y + rect.h - y - 1); // Bottom-right 
+            }
+        }
+    }
 
-    SDL_Color color = { 255, 255, 255, 255 }; 
+    // top and bottom horizontal borders
+    for (int x = radius; x < rect.w - radius; x++) {
+        SDL_RenderDrawPoint(renderer, rect.x + x, rect.y); // Top border
+        SDL_RenderDrawPoint(renderer, rect.x + x, rect.y + rect.h - 1); // Bottom border
+    }
+
+    // left and right vertical borders
+    for (int y = radius; y < rect.h - radius; y++) {
+        SDL_RenderDrawPoint(renderer, rect.x, rect.y + y); // Left border
+        SDL_RenderDrawPoint(renderer, rect.x + rect.w - 1, rect.y + y); // Right border
+    }
+
+    // vertical sides of the arcs
+    for (int y = 0; y < radius; y++) {
+        for (int x = 0; x < radius; x++) {
+            if (x * x + y * y <= radius * radius) {
+                SDL_RenderDrawPoint(renderer, rect.x + x, rect.y + rect.h - y - 1); // Bottom-left corner
+                SDL_RenderDrawPoint(renderer, rect.x + rect.w - x - 1, rect.y + rect.h - y - 1); // Bottom-right corner
+            }
+        }
+    }
+}
+
+void renderButton(SDL_Rect button, const char* label) {
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White
+    renderRoundedRect(renderer, button, 10); 
+
+    SDL_Color color = { 255, 255, 255, 255 };
     SDL_Surface* textSurface = TTF_RenderText_Solid(font, label, color);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-
     SDL_Rect textRect;
     textRect.x = button.x + (button.w - textSurface->w) / 2;
     textRect.y = button.y + (button.h - textSurface->h) / 2;
@@ -325,10 +368,10 @@ void renderButton( SDL_Rect button, const char* label) {
     textRect.h = textSurface->h;
 
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
-
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(textTexture);
 }
+
 
 void updateButtonPositions(SDL_Rect* startButton, SDL_Rect* optionButton) {
     int buttonWidth = SCREEN_WIDTH / 4;
@@ -358,7 +401,8 @@ bool allEnemiesDefeated(Entity enemies[]) {
     return true;
 }
 
-void updateEnemyPositions(Entity enemies[], Entity* player, float deltaTime) {
+void updateEnemyPositions(Entity enemies[], 
+Entity* player, float deltaTime) {
     for (int i = 0; i < ENEMY_COUNT; i++) {
         if (enemies[i].alive) {
             float dx = player->x - enemies[i].x;
@@ -371,6 +415,27 @@ void updateEnemyPositions(Entity enemies[], Entity* player, float deltaTime) {
             enemies[i].x += dx * ENEMY_SPEED * deltaTime;
             enemies[i].y += dy * ENEMY_SPEED * deltaTime;
         }
+    }
+}
+
+void fullScreen(SDL_Event *e){
+    if(e->key.keysym.sym == SDLK_f){
+        isFullScreen = !isFullScreen;
+        if (isFullScreen) {
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        } else {
+            SDL_SetWindowFullscreen(window, 0);
+            SDL_SetWindowSize(window, INITIAL_SCREEN_WIDTH, INITIAL_SCREEN_HEIGHT);
+        }        
+    }
+}
+
+void quitGame(SDL_Event *e){
+    if (e->type == SDL_QUIT) {
+        quit = true;
+        menuRunning = false;
+        running = false;
+        return;
     }
 }
 
@@ -391,21 +456,9 @@ void gameRunning() {
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                running = false;
-                return;
-            }
+            quitGame(&e);
             if (e.type == SDL_KEYDOWN) {
-                if (e.key.keysym.sym == SDLK_f) {
-                    // Toggle fullscreen
-                    isFullScreen = !isFullScreen;
-                    if (isFullScreen) {
-                        SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-                    } else {
-                        SDL_SetWindowFullscreen(window, 0);
-                        SDL_SetWindowSize(window, INITIAL_SCREEN_WIDTH, INITIAL_SCREEN_HEIGHT);
-                    }
-                }
+                fullScreen(&e);
             } else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     int width, height;
@@ -422,7 +475,8 @@ void gameRunning() {
             }
 
             if (gameOver && e.type == SDL_MOUSEBUTTONDOWN) {
-                return;
+                menuRunning = true;
+                running = false;
             }
 
             if (e.type == SDL_MOUSEBUTTONDOWN) {
@@ -430,7 +484,8 @@ void gameRunning() {
                     int mouseX = e.button.x;
                     int mouseY = e.button.y;
                     int numBullets = calculateNumBullets();
-                    shootBullets(player.x + PLAYER_SIZE / 2, player.y + PLAYER_SIZE / 2, mouseX, mouseY, numBullets);
+                    shootBullets(player.x + PLAYER_SIZE / 2, player.y + 
+                    PLAYER_SIZE / 2, mouseX, mouseY, numBullets);
                 }
             }
             
@@ -494,7 +549,7 @@ void gameRunning() {
                     lastDamageTime = currenTime;
                 }
                 if (player.hp <= 0) {
-                    gameOver = true;  // Trigger game over if HP reaches 0
+                    gameOver = true;
                     break;
                 }
             }
@@ -521,12 +576,12 @@ void mainMenu() {
     SDL_Rect startButton, optionButton;
     updateButtonPositions(&startButton, &optionButton);
 
-    while (running) {
+    while (menuRunning) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) {
-                running = false;
-                return;
+            quitGame(&e);
+            if(e.type == SDL_KEYDOWN) {
+                fullScreen(&e);
             }
             if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                 SCREEN_WIDTH = e.window.data1;
@@ -541,10 +596,7 @@ void mainMenu() {
                 if (x > startButton.x && x < startButton.x + startButton.w &&
                     y > startButton.y && y < startButton.y + startButton.h) {
                     running = true; 
-                    score = 0;
-                    ENEMY_SPEED= INITIAL_ENEMY_SPEED;
-                    gameRunning();  
-                    gameOver = false;  
+                    menuRunning = false;
                     break; 
                 }
                 // Check click option
@@ -563,10 +615,22 @@ void mainMenu() {
     }
 }
 
-int main(int argc, char* argv[]) {
+int WinMain(int argc, char* argv[]) {
     init();
     
-    mainMenu();
+    while (quit==false)
+    {
+        if(menuRunning == true){
+            mainMenu();
+        }
+        if(running==true){
+            gameRunning();
+            score = 0;
+            ENEMY_SPEED= INITIAL_ENEMY_SPEED; 
+            gameOver = false;  
+        }     
+    }
+    
 
     cleanup();
     return 0;
